@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A bouquet for you ♡</title>
+<style>
+  * { box-sizing: border-box; }
+  :root { color-scheme: dark; }
+  body { margin: 0; min-height: 100svh; display: grid; place-items: center; overflow: hidden;
+    background: #080914; color: #e9e2ed; font-family: 'Courier New', monospace; }
+  .scene { position: relative; width: 100%; height: 100svh; min-height: 340px; isolation: isolate;
+    background: radial-gradient(ellipse at 50% 45%, #1c2038 0%, #101324 42%, #080914 78%); }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  header { position: absolute; z-index: 1; top: max(22px, env(safe-area-inset-top)); left: 0; right: 0; text-align: center; pointer-events: none; }
+  .eyebrow { color: #a4b8df; text-transform: uppercase; letter-spacing: .29em; font-size: 10px; }
+  h1 { font-family: Georgia, serif; font-weight: 400; font-size: clamp(24px, 4.1vw, 41px); margin: 8px 0 5px; letter-spacing: -.025em; color: #f8edf5; }
+  .sub { font-size: 10px; letter-spacing: .08em; color: #a9a5bd; }
+  footer { position: absolute; bottom: max(19px, env(safe-area-inset-bottom)); left: 0; right: 0; text-align: center; z-index: 2; }
+  #message { margin: 0 auto 13px; color: #f4b9d3; font-size: clamp(11px, 1.7vw, 15px); letter-spacing: .035em; min-height: 20px; text-shadow: 0 0 14px #f891c477; }
+  .controls { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+  button { font: 11px 'Courier New', monospace; color: #cbd5ee; background: #15182bbd; border: 1px solid #424762; border-radius: 20px; padding: 8px 14px; cursor: pointer; transition: .2s; }
+  button:hover, button:focus-visible { color: #fff; border-color: #ad9bd0; background: #272a43; outline: none; }
+  .hint { margin-top: 9px; color: #777d9b; font-size: 9px; letter-spacing: .08em; }
+  .signature { margin-top: 6px; color: #d9a9ca; font-size: 11px; letter-spacing: .06em; }
+  .views { margin-top: 7px; }
+  .views button { font-size: 10px; padding: 5px 10px; }
+  .note { position: absolute; z-index: 4; left: 50%; top: 50%; transform: translate(-50%,-50%); width: min(88%, 390px); text-align: center; padding: 34px 28px; border-radius: 16px; border: 1px solid #ad90b7; background: #171629f5; box-shadow: 0 0 100px #d4a2ef35; }
+  .note[hidden] { display:none; }
+  .note h2 { color: #f5cadf; font-family: Georgia, serif; font-weight: 400; font-size: 29px; margin: 12px 0; }
+  .note p { color: #d5d0e4; line-height: 1.8; font-size: 13px; }
+  .note .heart { color: #f8a9cd; font-size: 27px; }
+  @media(max-height: 500px) { header { top: 10px; } h1 { font-size: 22px; margin: 3px 0; } .sub,.hint { display:none; } footer { bottom: 7px; } #message { margin-bottom: 5px; } }
+</style>
+</head>
+<body>
+<main class="scene" id="scene">
+  <canvas id="garden" aria-label="A rotating 3D ASCII bouquet of red roses, one pink peony, light blue tulips, white carnations, baby’s breath and eucalyptus"></canvas>
+  <header>
+    <div class="eyebrow">✧ &nbsp; &lt;3 &nbsp; ✧</div>
+    <h1>Flowers for you.</h1>
+    <div class="sub">ashcz</div>
+  </header>
+  <footer>
+    <div id="message">some things are meant to bloom forever. ♡</div>
+    <div class="controls">
+      <button id="spin">Ⅱ Pause</button>
+      <button id="bloom">✧ Bloom again</button>
+      <button id="letter">♡ A little note</button>
+    </div>
+    <div class="controls views" aria-label="3D viewing angles">
+      <button id="frontView">Front</button>
+      <button id="topView">Top</button>
+      <button id="bottomView">Bottom</button>
+      <button id="resetView">Reset view</button>
+    </div>
+    <div class="hint">drag any direction to rotate · scroll or pinch to zoom</div>
+    <div class="signature">from yo boyfie</div>
+  </footer>
+  <section id="note" class="note" role="dialog" aria-modal="true" aria-labelledby="noteTitle" hidden>
+    <div class="heart">♡</div>
+    <h2 id="noteTitle">for my ashcz ♡</h2>
+    <p>i made this just for you so you can have flowers that keep spinning and blooming forever, just like how you stay on my mind all the time.</p>
+    <p>i hope this makes you smile a little whenever you open it. love you always, from yo boyfie.</p>
+    <button id="closeNote">Back to the flowers</button>
+  </section>
+</main>
+<script>
+// All of the flowers are built from 3D points and drawn with text characters.
+// No libraries, images, internet connection, or installation are needed.
+const canvas = document.getElementById('garden');
+const ctx = canvas.getContext('2d');
+const TAU = Math.PI * 2;
+const points = [];
+const flowers = [];
+const rand = (function () { let s = 42; return () => { s = (Math.imul(1664525,s)+1013904223)>>>0; return s/4294967296; }; })();
+const palette = {
+  tulip: [[53,117,181],[102,179,233],[168,218,255],[221,244,255]],
+  rose: [[65,5,20],[145,12,34],[225,31,55],[255,91,99]],
+  peony: [[119,35,76],[210,81,137],[247,160,193],[255,226,237]],
+  peonyBud: [[99,39,68],[177,65,113],[233,129,170],[255,198,219]],
+  carnation: [[145,151,163],[210,214,219],[249,249,245],[255,255,255]],
+  eucalyptus: [[36,68,67],[80,125,115],[140,182,161],[192,220,199]],
+  leaf: [[32,81,77],[55,128,108],[98,171,139],[173,218,162]],
+  stem: [[30,72,70],[54,115,95],[103,167,126],[163,211,154]],
+  ribbon: [[102,55,123],[173,106,189],[223,159,226],[255,210,244]],
+  gold: [[136,94,49],[204,152,76],[251,207,113],[255,246,184]],
+  filler: [[82,91,146],[130,137,202],[188,179,243],[242,226,255]]
+};
+const chars = {petal: ':;*oO0@', leaf: '.:;/+=', stem: '.:|/\\', ribbon: ':;*oO', gold: '.*oO', filler: '.+*o'};
+function mixColor(colors, value) {
+  const t = Math.max(0,Math.min(2.999,value*3));
+  const i = Math.floor(t), f = t-i;
+  return `rgb(${colors[i].map((v,j)=>Math.round(v+(colors[i+1][j]-v)*f)).join(',')})`;
+}
+// Vector helpers for tilting every bloom in a slightly different direction.
+function add(a,b) { return a.map((v,i)=>v+b[i]); }
+function mul(a,n) { return a.map(v=>v*n); }
+function unit(a) { return mul(a,1/Math.hypot(...a)); }
+function cross(a,b) { return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]; }
+function push(x,y,z,pal,shade,kind,flower=-1) {
+  const p = palette[pal];
+  const v = Math.max(.04,Math.min(.99,shade));
+  const glyphs = chars[kind];
+  points.push({x,y,z,flower,kind, color:mixColor(p,v), glyph:glyphs[Math.min(glyphs.length-1,Math.floor(v*(glyphs.length-1)+rand()*.8))]});
+}
+function local(f, x,y,z,pal,shade,kind='petal') {
+  const p = add(f.base,add(mul(f.right,x),add(mul(f.axis,y),mul(f.forward,z))));
+  push(...p,pal,shade,kind,f.id);
+}
+function bezier(a,b,c,t) {
+  return a.map((v,i)=>(1-t)*(1-t)*v+2*t*(1-t)*b[i]+t*t*c[i]);
+}
+function makeStem(f) {
+  const [x,y,z] = f.base;
+  const a = [x*.075,-2.72,z*.075];
+  const b = [x*.35,-.9,z*.35];
+  for(let i=0;i<=140;i++) {
+    const t=i/140, p=bezier(a,b,f.base,t);
+    for(let j=0;j<3;j++) {
+      const angle=j*TAU/3;
+      push(p[0]+Math.cos(angle)*.026,p[1],p[2]+Math.sin(angle)*.026,'stem',.45+.23*Math.sin(angle)+t*.13,'stem');
+    }
+  }
+  // Long, curved leaves, with a bright central vein.
+  for(let k=0;k<2;k++) {
+    const t=.31+k*.29+rand()*.08;
+    const root=bezier(a,b,f.base,t);
+    const ang=Math.atan2(z,x)+(k===0?-.8:.7)+(rand()-.5)*.6;
+    const len=.68+rand()*.55;
+    const width=.15+rand()*.10;
+    for(let i=0;i<=34;i++) {
+      const u=i/34, w=width*Math.pow(Math.sin(Math.PI*u),.85);
+      for(let j=-5;j<=5;j++) {
+        const v=j/5;
+        const r=len*(.86*u), dy=len*(.82*u-.38*u*u);
+        push(root[0]+Math.cos(ang)*r-Math.sin(ang)*w*v,root[1]+dy+.08*(1-v*v)*Math.sin(Math.PI*u),root[2]+Math.sin(ang)*r+Math.cos(ang)*w*v,'leaf',.23+.34*(1-Math.abs(v))+.13*rand()+.1*u,'leaf');
+      }
+    }
+  }
+}
+// Tulip: six curved, overlapping petals form a tall open cup.
+function tulip(f) {
+  const R=f.size;
+  for(let k=0;k<6;k++) {
+    const angle=k*TAU/6+f.phase;
+    const inner=k%2===1;
+    for(let i=0;i<=30;i++) {
+      const u=i/30;
+      const radius=R*(.10+.79*Math.sin(u*Math.PI*.77));
+      const half=.58*Math.pow(Math.sin(Math.PI*u),.37)+.08;
+      for(let j=-13;j<=13;j++) {
+        const v=j/13, a=angle+v*half;
+        const r=radius*(1-.18*v*v)*(inner?.90:1);
+        const y=R*(1.48*u-.24*v*v*Math.pow(u,2)+.07*Math.cos(v*Math.PI)*u)-(inner?-.04:0);
+        const shade=.16+.48*u+.23*(1-v*v)+.12*Math.cos(angle-.7)+rand()*.07;
+        local(f,r*Math.cos(a),y,r*Math.sin(a),'tulip',shade);
+      }
+    }
+  }
+  for(let k=0;k<6;k++) {
+    const a=k*TAU/6;
+    for(let i=0;i<12;i++) local(f,.15*R*Math.cos(a),R*(.45+i*.034),.15*R*Math.sin(a),'gold',.55+rand()*.4,'gold');
+  }
+}
+// Red roses: tightly rolled central petals and outward curling guard petals.
+function rose(f) {
+  const R=f.size;
+  const layers=[
+    {n:3,r:.22,h:.98,w:.22},
+    {n:4,r:.38,h:.97,w:.32},
+    {n:5,r:.56,h:.88,w:.42},
+    {n:5,r:.75,h:.78,w:.52},
+    {n:6,r:.94,h:.64,w:.58},
+    {n:7,r:1.08,h:.51,w:.63}
+  ];
+  layers.forEach((L,k)=>{
+    for(let j=0;j<L.n;j++) {
+      const a=j*TAU/L.n+k*.84+f.phase;
+      for(let i=0;i<=30;i++) {
+        const u=i/30;
+        for(let m=-16;m<=16;m++) {
+          const v=m/16;
+          const width=L.w*Math.pow(Math.sin(Math.PI*u*.88),.60);
+          const angle=a+v*width*1.7+.38*u;
+          const radius=L.r*(.24+.85*Math.sin(u*1.9))*(1-.23*v*v)-.13*L.r*Math.pow(u,6);
+          const y=.03+k*.012+L.h*(.12+.88*u)-.17*Math.pow(u,7)*(k/5)+.08*v*v*u+.035*Math.cos(v*6+j)*u*u;
+          const shade=.17+.39*u+.25*Math.pow(Math.abs(v),2)+.15*Math.pow(u,9)+.10*Math.cos(angle-.5)+rand()*.025;
+          local(f,R*radius*Math.cos(angle),R*y,R*radius*Math.sin(angle),'rose',shade);
+        }
+      }
+    }
+  });
+  // Rolled spiral at the heart of each rose.
+  for(let i=0;i<=160;i++) {
+    const u=i/160,a=f.phase+u*TAU*1.5,r=R*(.025+.20*u);
+    for(let j=0;j<=12;j++) local(f,r*Math.cos(a),R*(.73+.26*j/12),r*Math.sin(a),'rose',.26+.45*j/12);
+  }
+}
+// Double peony: large guard petals and many folded, softer inner petals.
+function peony(f) {
+  const R=f.size;
+  const layers=[
+    {n:9,root:.13,reach:1.06,base:.02,tip:.53,w:.43,curl:.16},
+    {n:10,root:.13,reach:.90,base:.13,tip:.71,w:.34,curl:.15},
+    {n:11,root:.10,reach:.72,base:.24,tip:.82,w:.25,curl:.14},
+    {n:12,root:.08,reach:.54,base:.37,tip:.91,w:.19,curl:.12},
+    {n:9,root:.04,reach:.36,base:.48,tip:.94,w:.14,curl:.10},
+    {n:7,root:.02,reach:.21,base:.61,tip:.96,w:.10,curl:.08}
+  ];
+  layers.forEach((L,ring)=>{
+    for(let k=0;k<L.n;k++) {
+      const a=k*TAU/L.n+ring*.47+f.phase;
+      const ca=Math.cos(a),sa=Math.sin(a);
+      const variation=.94+.12*rand();
+      for(let i=0;i<=21;i++) {
+        const u=i/21;
+        const width=L.w*Math.pow(Math.sin(Math.PI*u*.98),.57)*(1+.10*Math.sin(u*6+k));
+        for(let j=-11;j<=11;j++) {
+          const v=j/11;
+          const edge=Math.abs(v);
+          const ripple=(.035*Math.cos(v*8+k*1.7)+.018*Math.sin(v*17+k))*Math.pow(u,2);
+          // Petals flare outward, then gently curl back at their rounded tips.
+          const rad=L.root+(L.reach-L.root)*Math.sin(u*Math.PI*.62)*variation
+                    -L.curl*Math.pow(u,5)-.07*edge*edge*u;
+          const sideways=v*width+.035*Math.sin(u*4+k)*u;
+          const y=L.base+(L.tip-L.base)*u+.09*Math.sin(Math.PI*u)
+                    +.15*edge*edge*u+L.curl*.75*Math.pow(u,5)+ripple;
+          // Dark folds at the base and pale, softly ruffled petal edges.
+          const shade=.14+.37*u+.28*Math.pow(edge,2)+.17*Math.cos(v*4+a)
+                      +.21*Math.pow(u,7)+.035*rand();
+          local(f,R*(rad*ca-sideways*sa),R*y,R*(rad*sa+sideways*ca),'peony',shade);
+        }
+      }
+    }
+  });
+}
+// An unopened peony is a round, tightly wrapped bud, not a miniature open flower.
+function peonyBud(f) {
+  const R=f.size;
+  for(let i=0;i<=44;i++) {
+    const t=i/44, phi=Math.PI*t;
+    for(let j=0;j<100;j++) {
+      const a=j*TAU/100;
+      const seam=.5+.5*Math.cos(7*a+1.8*t);
+      const r=R*.53*Math.sin(phi)*(1-.045*Math.pow(seam,10));
+      const y=R*(.55-.55*Math.cos(phi));
+      const green=t<.29;
+      local(f,r*Math.cos(a),y,r*Math.sin(a),green?'leaf':'peonyBud',
+        .37+.23*t+.13*Math.cos(a-.7)-.20*Math.pow(seam,13)+.07*rand(),green?'leaf':'petal');
+    }
+  }
+  // Five green sepals curve upward against the base of the bud.
+  for(let k=0;k<5;k++) {
+    const a=k*TAU/5+f.phase;
+    for(let i=0;i<=24;i++) {
+      const u=i/24;
+      for(let j=-7;j<=7;j++) {
+        const v=j/7, angle=a+v*.48*Math.sin(Math.PI*u);
+        const r=R*(.12+.43*Math.sin(u*1.65));
+        local(f,r*Math.cos(angle),R*(.03+.61*u),r*Math.sin(angle),'leaf',.38+.22*(1-Math.abs(v))+.08*u,'leaf');
+      }
+    }
+  }
+}
+// Carnations: many small, frilled petals packed into a round fluffy flower.
+function carnation(f) {
+  const R=f.size;
+  for(let ring=0; ring<6; ring++) {
+    const n=7 + ring*3;
+    const radius=.11 + ring*.10;
+    const lift=.80 - ring*.085;
+    for(let k=0; k<n; k++) {
+      const a0=k*TAU/n + ring*.31 + f.phase;
+      for(let i=0; i<=15; i++) {
+        const u=i/15;
+        const half=(.50-ring*.035)*Math.pow(Math.sin(Math.PI*u*.98),.40)+.04;
+        for(let j=-8; j<=8; j++) {
+          const v=j/8;
+          const a=a0 + v*half + .03*Math.sin((k+1)*u*5);
+          const edge=1+.18*Math.sin(v*12 + ring*2 + k*.7);
+          const r=R*radius*(.24 + .93*Math.sin(u*Math.PI*.82))*edge*(1-.12*v*v);
+          const frill=.08*Math.sin(v*14 + u*7 + ring);
+          const y=R*(lift + .24*Math.sin(Math.PI*u*.9) + .14*(1-v*v)*u + frill);
+          local(f,r*Math.cos(a),y,r*Math.sin(a),'carnation',.20+.40*u+.28*(1-v*v)+rand()*.08);
+        }
+      }
+    }
+  }
+  for(let i=0;i<85;i++) {
+    const a=rand()*TAU, rr=R*.11*Math.sqrt(rand());
+    local(f,rr*Math.cos(a),R*(.85+rand()*.05),rr*Math.sin(a),'carnation',.45+rand()*.28);
+  }
+}
+function flower(type,x,y,z,size) {
+  const f={id:flowers.length,type,base:[x,y,z],size,phase:rand()*TAU};
+  f.axis=unit([x*.12,1,z*.12+(type==='peony'?.27:type==='rose'?.23:0)]); f.right=unit(cross([0,0,1],f.axis)); f.forward=unit(cross(f.axis,f.right));
+  flowers.push(f); makeStem(f);
+  // Green sepals at the bottom of the flower.
+  for(let k=0;k<5;k++) for(let i=0;i<17;i++) {
+    const t=i/16,a=k*TAU/5, r=size*(.04+.33*t);
+    local(f,r*Math.cos(a),size*(.32*t-.06),r*Math.sin(a),'leaf',.35+.3*t,'leaf');
+  }
+  ({tulip,rose,peony,peonyBud,carnation})[type](f);
+}
+// A less crowded bouquet: one open pink peony, red roses,
+// light blue tulips and white carnations.
+flower('peony', 0, 1.54, .38, .88);
+flower('rose', -1.00, 1.12, .65, .65);
+flower('rose', 1.03, 1.06, .65, .65);
+flower('rose', .03, 1.02, -1.03, .63);
+flower('tulip', -1.34, 1.85, -.32, .43);
+flower('tulip', 1.36, 1.79, -.30, .43);
+flower('tulip', -.73, .36, 1.38, .44);
+flower('tulip', .73, .38, -1.50, .44);
+flower('carnation', -1.59, .55, .14, .57);
+flower('carnation', 1.56, .55, -.16, .57);
+flower('carnation', .47, .22, 1.43, .54);
+// Airy baby's breath: branching sprays with tiny white blossoms.
+for(let k=0;k<14;k++) {
+  const a=k*TAU/14+.3, r=1.48+rand()*.60, h=.45+rand()*1.48;
+  const top=[Math.cos(a)*r,h,Math.sin(a)*r];
+  const root=[Math.cos(a)*.12,-2.05,Math.sin(a)*.12];
+  const mid=[Math.cos(a)*r*.55,-.22,Math.sin(a)*r*.55];
+  for(let i=0;i<65;i++) {const p=bezier(root,mid,top,i/64);push(...p,'stem',.35,'stem');}
+  for(let j=0;j<6;j++) {
+    const da=a+j*2.4,rr=.10+rand()*.25;
+    const end=add(top,[Math.cos(da)*rr,(rand()-.35)*.46,Math.sin(da)*rr]);
+    const start=bezier(root,mid,top,.80+j*.029);
+    for(let i=0;i<15;i++) {const t=i/14;push(...add(mul(start,1-t),mul(end,t)),'stem',.40,'stem');}
+    for(let i=0;i<9;i++) {const aa=i*TAU/9;push(end[0]+.055*Math.cos(aa),end[1]+.055*Math.sin(aa),end[2]+.025*Math.sin(aa*2),'carnation',.79+rand()*.20,'filler');}
+  }
+}
+// Eucalyptus sprigs with round, muted green leaves.
+for(let k=0;k<5;k++) {
+  const a=k*TAU/5+.60;
+  const start=[.10*Math.cos(a),-1.85,.10*Math.sin(a)];
+  const middle=[.78*Math.cos(a),-.50,.78*Math.sin(a)];
+  const tip=[2.18*Math.cos(a),1.01,2.18*Math.sin(a)];
+  for(let i=0;i<=100;i++) {const p=bezier(start,middle,tip,i/100);push(...p,'stem',.56,'stem');}
+  for(let j=0;j<7;j++) {
+    const p=bezier(start,middle,tip,.42+j*.085);
+    const side=j%2?1:-1,rad=.14-.05*j/7;
+    for(let i=0;i<=15;i++) for(let n=0;n<25;n++) {
+      const u=i/15,b=n*TAU/25;
+      const length=.12+rad*u*Math.cos(b),width=rad*u*Math.sin(b);
+      push(p[0]+side*Math.sin(a)*length+Math.cos(a)*width,p[1]+.12+rad*u*Math.cos(b),p[2]-side*Math.cos(a)*length+Math.sin(a)*width,'eucalyptus',.43+.28*(1-u)+rand()*.13,'leaf');
+    }
+  }
+}
+// A satin bow wraps around the stems, with loops and cascading tails.
+for(let side of [-1,1]) {
+  for(let i=0;i<=70;i++) {
+    const t=i/70, a=TAU*t;
+    const x=side*(.05+.70*Math.sin(Math.PI*t));
+    const y=-1.92+.27*Math.sin(a)+.12*Math.sin(Math.PI*t);
+    const z=.18+.12*Math.sin(a);
+    for(let j=-6;j<=6;j++) { const v=j/6; push(x,y+v*.075,z+.045*(1-v*v),'ribbon',.39+.37*(1-Math.abs(v))+.12*Math.sin(a),'ribbon'); }
+  }
+  for(let i=0;i<=65;i++) {
+    const t=i/65;
+    for(let j=-6;j<=6;j++) { const v=j/6; push(side*(.10+.48*t+.13*Math.sin(t*5))+.12*v*(1-.3*t),-1.96-.87*t,.20+.17*Math.sin(t*4+v),'ribbon',.34+.42*(1-Math.abs(v))+.12*Math.sin(t*8),'ribbon'); }
+  }
+}
+for(let i=0;i<150;i++) { const a=rand()*TAU,b=Math.acos(2*rand()-1); push(.13*Math.sin(b)*Math.cos(a),-1.91+.11*Math.cos(b),.23+.10*Math.sin(b)*Math.sin(a),'ribbon',.55+rand()*.4,'ribbon'); }
+// Stars are screen-space; the bouquet itself is actual rotating 3D geometry.
+const stars=Array.from({length:100},()=>({x:rand(),y:rand(),size:rand(),phase:rand()*TAU,color:['#a8c9ff','#e3bcfa','#fae3b3','#b2f7e3'][Math.floor(rand()*4)]}));
+const petals=Array.from({length:18},()=>({x:rand(),y:rand(),phase:rand()*TAU,speed:.015+rand()*.018,color:['#b5ddff','#f8b1cc','#ffe2c7'][Math.floor(rand()*3)]}));
+let W=0,H=0,cellW=7,cellH=9,cols,rows,scale,cx,cy,zBuffer,grid;
+let angle=.34, pitch=.29, zoom=1, playing=true, autoTilt=true;
+let bloomStart=performance.now()-350, dragging=false, lastX=0, lastY=0, lastTime=performance.now(), orbitTime=0;
+const pointers=new Map();
+let pinchDistance=0;
+const clampZoom=v=>Math.max(.65,Math.min(2.2,v));
+function resize() {
+  W=canvas.clientWidth; H=canvas.clientHeight;
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  canvas.width=Math.round(W*dpr); canvas.height=Math.round(H*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  const usable=Math.max(100,H-(H<500?160:250));
+  scale=Math.min(W*.86/5.6,usable/6.15);
+  cellW=Math.max(3.4,Math.min(5.6,scale*.043)); cellH=cellW*1.28;
+  cols=Math.ceil(W/cellW); rows=Math.ceil(H/cellH);
+  cx=W/2; cy=(H<500?43:93)+usable/2+.12*scale;
+  zBuffer=new Float32Array(cols*rows); grid=new Array(cols*rows);
+}
+function draw(time) {
+  const t=time/1000, dt=Math.min((time-lastTime)/1000,.05); lastTime=time;
+  if(playing&&!dragging) {
+    angle+=dt*.39;
+    if(autoTilt) {
+      orbitTime+=dt;
+      pitch=.29+.57*Math.sin(orbitTime*.32);
+    }
+  }
+  const bloom=Math.max(0,Math.min(1,(time-bloomStart)/2000));
+  ctx.clearRect(0,0,W,H);
+  // Soft twinkling stars and drifting petal-shaped characters.
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  for(const s of stars) {
+    const x=s.x*W,y=65+s.y*(H-145);
+    const a=.12+.56*(.5+.5*Math.sin(t*1.4+s.phase));
+    ctx.globalAlpha=a; ctx.fillStyle=s.color;
+    ctx.font=`${s.size>.9?15:8}px monospace`;
+    ctx.fillText(s.size>.9?'✧':s.size>.63?'+':'·',x,y);
+  }
+  for(const p of petals) {
+    const y=((p.y+t*p.speed)%1)*(H-145)+65;
+    const x=(p.x+.025*Math.sin(t*.75+p.phase))*W;
+    ctx.globalAlpha=.20+.20*Math.sin(t+p.phase)**2; ctx.fillStyle=p.color; ctx.font='11px monospace'; ctx.fillText('❀',x,y);
+  }
+  ctx.globalAlpha=1;
+  const c=Math.cos(angle),s=Math.sin(angle),cp=Math.cos(pitch),sp=Math.sin(pitch);
+  const viewScale=scale*zoom;
+  const growth=flowers.map(f=>{
+    const q=Math.max(0,Math.min(1,bloom*1.4-f.id*.024));
+    return .10+.90*(1-Math.pow(1-q,3));
+  });
+  zBuffer.fill(-Infinity); grid.fill(null);
+  for(const p of points) {
+    let {x,y,z}=p;
+    if(bloom<1 && p.flower>=0 && p.kind==='petal') {
+      const f=flowers[p.flower], k=f.type==='peonyBud'?1:growth[p.flower];
+      x=f.base[0]+(x-f.base[0])*k; y=f.base[1]+(y-f.base[1])*k; z=f.base[2]+(z-f.base[2])*k;
+    }
+    const rx=x*c+z*s, rz=-x*s+z*c;
+    const ry=y*cp-rz*sp, depth=rz*cp+y*sp;
+    const perspective=1/(1-depth*.045);
+    const px=cx+rx*viewScale*perspective, py=cy-ry*viewScale*perspective;
+    const ix=Math.floor(px/cellW),iy=Math.floor(py/cellH);
+    if(ix<0||iy<0||ix>=cols||iy>=rows)continue;
+    const idx=iy*cols+ix;
+    if(depth>zBuffer[idx]) { zBuffer[idx]=depth; grid[idx]=p; }
+  }
+  ctx.font=`${cellH*1.12}px 'Courier New', monospace`;
+  for(let i=0;i<grid.length;i++) {
+    const p=grid[i]; if(!p) continue;
+    ctx.fillStyle=p.color;
+    ctx.globalAlpha=Math.max(.56,Math.min(1,.84+zBuffer[i]*.075));
+    ctx.fillText(p.glyph,(i%cols+.5)*cellW,(Math.floor(i/cols)+.5)*cellH);
+  }
+  ctx.globalAlpha=1;
+  requestAnimationFrame(draw);
+}
+window.addEventListener('resize',resize); resize(); requestAnimationFrame(draw);
+const spin=document.getElementById('spin');
+function setPlaying(value) {
+  playing=value;
+  spin.textContent=playing?'Ⅱ Pause':'▶ Spin';
+}
+spin.onclick=()=>setPlaying(!playing);
+function setView(yaw,tilt) {
+  angle=yaw; pitch=tilt; autoTilt=false; zoom=1; setPlaying(false);
+}
+document.getElementById('frontView').onclick=()=>setView(0,0);
+document.getElementById('topView').onclick=()=>setView(angle,Math.PI/2);
+document.getElementById('bottomView').onclick=()=>setView(angle,-Math.PI/2);
+document.getElementById('resetView').onclick=()=>{
+  angle=.34; pitch=.29; zoom=1; orbitTime=0; autoTilt=true; setPlaying(true);
+};
+document.getElementById('bloom').onclick=()=>{bloomStart=performance.now();};
+const note=document.getElementById('note');
+document.getElementById('letter').onclick=()=>{note.hidden=false;document.getElementById('closeNote').focus();};
+document.getElementById('closeNote').onclick=()=>{note.hidden=true;document.getElementById('letter').focus();};
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!note.hidden){note.hidden=true;document.getElementById('letter').focus();}});
+// Orbit freely on both axes, with no vertical angle limit.
+canvas.style.touchAction='none';
+canvas.style.cursor='grab';
+canvas.tabIndex=0;
+function touchDistance() {
+  const [a,b]=pointers.values();
+  return Math.hypot(a.x-b.x,a.y-b.y);
+}
+canvas.addEventListener('pointerdown',e=>{
+  pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  dragging=true; autoTilt=false; setPlaying(false);
+  lastX=e.clientX; lastY=e.clientY;
+  canvas.style.cursor='grabbing';
+  canvas.setPointerCapture(e.pointerId);
+  if(pointers.size===2) pinchDistance=touchDistance();
+});
+canvas.addEventListener('pointermove',e=>{
+  if(!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pointers.size>=2) {
+    const distance=touchDistance();
+    if(pinchDistance>0) zoom=clampZoom(zoom*distance/pinchDistance);
+    pinchDistance=distance;
+  } else {
+    angle+=(e.clientX-lastX)*.009;
+    pitch+=(e.clientY-lastY)*.009;
+  }
+  lastX=e.clientX; lastY=e.clientY;
+});
+function endPointer(e) {
+  pointers.delete(e.pointerId);
+  pinchDistance=0;
+  dragging=pointers.size>0;
+  if(dragging) {
+    const p=pointers.values().next().value;
+    lastX=p.x; lastY=p.y;
+  } else canvas.style.cursor='grab';
+}
+canvas.addEventListener('pointerup',endPointer);
+canvas.addEventListener('pointercancel',endPointer);
+canvas.addEventListener('lostpointercapture',endPointer);
+canvas.addEventListener('wheel',e=>{
+  e.preventDefault(); zoom=clampZoom(zoom*Math.exp(-e.deltaY*.001));
+},{passive:false});
+canvas.addEventListener('keydown',e=>{
+  const delta=.12;
+  if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','+','-','='].includes(e.key)) return;
+  e.preventDefault(); autoTilt=false; setPlaying(false);
+  if(e.key==='ArrowLeft') angle-=delta;
+  if(e.key==='ArrowRight') angle+=delta;
+  if(e.key==='ArrowUp') pitch+=delta;
+  if(e.key==='ArrowDown') pitch-=delta;
+  if(e.key==='+'||e.key==='=') zoom=clampZoom(zoom*1.1);
+  if(e.key==='-') zoom=clampZoom(zoom/1.1);
+});
+</script>
+</body>
+</html>
